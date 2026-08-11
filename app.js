@@ -24,7 +24,7 @@ const MAX_MSG_BYTES = 4096;
 const MAX_MSGS_SEC  = 50;
 const MAX_POINTS    = 300;
 const SAMPLE_MS     = 500;
-const SF_CDN        = '[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/stockfish@18.0.0/src/)';
+const SF_CDN        = 'https://cdn.jsdelivr.net/npm/stockfish@18.0.0/src/';
 
 const $ = (id) => document.getElementById(id);
 
@@ -84,8 +84,8 @@ function makeId() {
 function loadChessLibs() {
   if (chessLibs) return Promise.resolve(chessLibs);
   return Promise.all([
-    import('[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/chess.js@1.4.0/+esm)'),
-    import('[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/chessground@9.1.1/+esm)'),
+    import('https://cdn.jsdelivr.net/npm/chess.js@1.4.0/+esm'),
+    import('https://cdn.jsdelivr.net/npm/chessground@9.1.1/+esm'),
   ]).then(([cjs, cg]) => {
     chessLibs = { Chess: cjs.Chess, Chessground: cg.Chessground };
     return chessLibs;
@@ -107,7 +107,8 @@ function engineSources() {
 
 function startWorker() {
   try {
-    worker = new Worker('./worker.js');
+    // ?v=2 busts the HTTP cache so the fixed worker script is always fetched.
+    worker = new Worker('./worker.js?v=2');
   } catch {
     setEngine('err', 'Engine worker blocked — serve the app over HTTPS, not file://');
     return;
