@@ -19,19 +19,26 @@ async function loadEngine(sources) {
   for (const src of sources) {
     try {
       let scriptUrl = src.js;
-      const opts = {};
+
+      // IMPORTANT: a script imported into a worker cannot reliably work out
+      // its own directory — without these two options Emscripten resolves
+      // the .wasm relative to worker.js (site root) and gets a 404 HTML page
+      // ("expected magic word ... found 3c 21 44 4f"). Always point file
+      // lookups and pthread helper spawns back at the engine's own folder.
+      const opts = {
+        locateFile: (p) => new URL(p, src.js).href,
+        mainScriptUrlOrBlob: src.js,
+      };
 
       if (src.crossOrigin) {
         // Cross-origin engines: pull the loader script and run it from a
         // same-origin blob so Emscripten's pthread helper workers are allowed
-        // to spawn. File lookups (.wasm, worker parts) are pointed back at
-        // the CDN, which serves CORS + CORP headers.
+        // to spawn. File lookups (.wasm, worker parts) stay pointed at the CDN.
         const resp = await fetch(src.js);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const blob = new Blob([await resp.text()], { type: 'text/javascript' });
         scriptUrl = URL.createObjectURL(blob);
         opts.mainScriptUrlOrBlob = blob;
-        opts.locateFile = (p) => new URL(p, src.js).href;
       }
 
       importScripts(scriptUrl);
@@ -84,4 +91,3 @@ function onLine(line) {
 
   if (line === 'uciok' || line === 'readyok') post({ type: line });
 }
-
