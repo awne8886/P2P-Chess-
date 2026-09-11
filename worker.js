@@ -26,8 +26,8 @@ async function loadEngine(sources) {
       // ("expected magic word ... found 3c 21 44 4f"). Always point file
       // lookups and pthread helper spawns back at the engine's own folder.
       const opts = {
-        locateFile: (p) => new URL(p, src.js).href,
-        mainScriptUrlOrBlob: src.js,
+        locateFile: (p) => { let url = new URL(src.js, location.href).href; return url.replace(/[^\/]+$/, p); },
+        mainScriptUrlOrBlob: new URL(src.js, location.href).href,
       };
 
       if (src.crossOrigin) {
