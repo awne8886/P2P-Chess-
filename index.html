@@ -7,23 +7,23 @@
 
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' [cdn.jsdelivr.net](https://cdn.jsdelivr.net) 'wasm-unsafe-eval';
-  style-src 'self' [cdn.jsdelivr.net](https://cdn.jsdelivr.net) 'unsafe-inline';
-  connect-src 'self' [cdn.jsdelivr.net](https://cdn.jsdelivr.net) [0.peerjs.com](https://0.peerjs.com) wss://0.peerjs.com;
+  script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval';
+  style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline';
+  connect-src 'self' https://cdn.jsdelivr.net https://0.peerjs.com wss://0.peerjs.com;
   img-src 'self' data: blob:;
   worker-src 'self' blob:;
   object-src 'none';
   base-uri 'none'">
 
 <link rel="stylesheet" href="./style.css">
-<link rel="stylesheet" href="[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/chessground@9.1.1/assets/chessground.base.css)" crossorigin="anonymous">
-<link rel="stylesheet" href="[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/chessground@9.1.1/assets/chessground.brown.css)" crossorigin="anonymous">
-<link rel="stylesheet" href="[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/chessground@9.1.1/assets/chessground.cburnett.css)" crossorigin="anonymous">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chessground@9.1.1/assets/chessground.base.css" crossorigin="anonymous">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chessground@9.1.1/assets/chessground.brown.css" crossorigin="anonymous">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chessground@9.1.1/assets/chessground.cburnett.css" crossorigin="anonymous">
 
-<script src="[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js)" crossorigin="anonymous"></script>
-<script src="[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js)" crossorigin="anonymous"></script>
-<script src="[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js)" crossorigin="anonymous"></script>
-<script src="[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js)" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous"></script>
 </head>
 
 <body>
