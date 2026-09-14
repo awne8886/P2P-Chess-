@@ -96,12 +96,7 @@ function loadChessLibs() {
 function engineSources() {
   const local = (f) => new URL('stockfish/' + f, location.href).href;
   const s = [];
-  if (crossOriginIsolated) {
-    s.push({ label: 'local files',  js: local('stockfish-18-lite.js'), threaded: true });
-    s.push({ label: 'CDN',          js: SF_CDN + 'stockfish-18-lite.js', threaded: true, crossOrigin: true });
-  }
-  s.push({ label: 'local files', js: local('stockfish-18-lite-single.js') });
-  s.push({ label: 'CDN',         js: SF_CDN + 'stockfish-18-lite-single.js', crossOrigin: true });
+  s.push({ label: 'local files', js: local('chal.js') });
   return s;
 }
 
@@ -124,7 +119,7 @@ function onWorkerMsg(m) {
   switch (m.type) {
     case 'loaded':
       engineThreaded = !!m.threaded;
-      setEngine('ok', `Stockfish 18 · ${m.threaded ? 'multi' : 'single'}-threaded · ${m.source}`);
+      setEngine('ok', `Chal · single-threaded · ${m.source}`);
       break;
     case 'loadfail':
       setEngine('wait', `Engine loading… (${m.source} variant unavailable, trying next)`);

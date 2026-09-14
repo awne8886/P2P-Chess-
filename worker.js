@@ -43,7 +43,22 @@ async function loadEngine(sources) {
 
       importScripts(scriptUrl);
 
-      if (typeof Stockfish === 'function') {
+      if (typeof Chal === 'function') {
+        opts.print = (text) => {
+           onLine(text);
+        };
+        opts.printErr = (text) => {
+           console.error(text);
+        };
+        const m = await Chal(opts);
+        engine = {
+            postMessage: (msg) => {
+                if (m.ccall) {
+                    m.ccall('uci_command', null, ['string'], [msg]);
+                }
+            }
+        };
+      } else if (typeof Stockfish === 'function') {
         // Modern nmrugg builds: Stockfish() returns a promise of the engine.
         const sf = await Stockfish(opts);
         sf.addMessageListener(onLine);
