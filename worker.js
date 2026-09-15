@@ -11,6 +11,7 @@ self.onmessage = (e) => {
   const msg = e.data || {};
   if (msg.type === 'load') { loadEngine(Array.isArray(msg.sources) ? msg.sources : []); return; }
   if (msg.type === 'uci' && engine && typeof msg.cmd === 'string' && msg.cmd.length < 512) {
+    if (msg.cmd.includes('setoption name Hash')) return;
     engine.postMessage(msg.cmd);
   }
 };
@@ -54,7 +55,6 @@ async function loadEngine(sources) {
         engine = {
             postMessage: (msg) => {
                 if (m.ccall) {
-                    if (msg.includes('setoption name Hash')) return;
                     m.ccall('uci_command', 'number', ['string'], [msg]);
                 }
             }
