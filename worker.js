@@ -54,7 +54,8 @@ async function loadEngine(sources) {
         engine = {
             postMessage: (msg) => {
                 if (m.ccall) {
-                    m.ccall('uci_command', null, ['string'], [msg]);
+                    if (msg.includes('setoption name Hash')) return;
+                    m.ccall('uci_command', 'number', ['string'], [msg]);
                 }
             }
         };
