@@ -361,7 +361,7 @@ function beginMode(c) {
   screen('s-run');
   initChart();
   uci('setoption name Threads value ' + cfg.threads);
-  uci('setoption name Hash value 16');
+  // uci('setoption name Hash value 16');
   uci('ucinewgame');
   if (mode === 'match') beginMatch(); else beginStress();
 }
@@ -391,7 +391,7 @@ function think() {
   uci('go depth ' + cfg.depth);
 }
 
-function thinkStress() { if (!stressTimer) return; uci('position fen ' + STRESS_FEN); uci('go depth 20'); }
+function thinkStress() { uci('position fen ' + STRESS_FEN); uci('go infinite'); }
 
 function onBestmove(moveStr) {
   if (mode === 'match' && thinking) {
@@ -447,9 +447,10 @@ function beginStress() {
   $('l-extra-label').textContent = 'depth';
   $('r-extra-label').textContent = 'depth';
   setStatus(`Stress test — go infinite for ${cfg.duration}s at ${cfg.threads} thread(s).`);
-  thinkStress();
   const t0 = performance.now();
 
+  stressTimer = true;
+  thinkStress();
   stressTimer = setInterval(() => {
     const el = Math.round(performance.now() - t0);
     const nps = lastTel.nps || 0;
