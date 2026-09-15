@@ -361,7 +361,7 @@ function beginMode(c) {
   screen('s-run');
   initChart();
   uci('setoption name Threads value ' + cfg.threads);
-  uci('setoption name Hash value 32');
+  uci('setoption name Hash value 16');
   uci('ucinewgame');
   if (mode === 'match') beginMatch(); else beginStress();
 }
