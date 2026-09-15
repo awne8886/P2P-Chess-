@@ -391,6 +391,8 @@ function think() {
   uci('go depth ' + cfg.depth);
 }
 
+function thinkStress() { if (!stressTimer) return; uci('position fen ' + STRESS_FEN); uci('go depth 20'); }
+
 function onBestmove(moveStr) {
   if (mode === 'match' && thinking) {
     thinking = false;
@@ -403,6 +405,7 @@ function onBestmove(moveStr) {
     afterMove();
   }
   // Mode B: bestmove arrives after 'stop' — nothing to do.
+  if (mode === 'stress') thinkStress();
 }
 
 function onPeerMove(m) {
@@ -444,8 +447,7 @@ function beginStress() {
   $('l-extra-label').textContent = 'depth';
   $('r-extra-label').textContent = 'depth';
   setStatus(`Stress test — go infinite for ${cfg.duration}s at ${cfg.threads} thread(s).`);
-  uci('position fen ' + STRESS_FEN);
-  uci('go infinite');
+  thinkStress();
   const t0 = performance.now();
 
   stressTimer = setInterval(() => {
