@@ -1,5 +1,5 @@
-/* app.js — PeerJS connection (QR handshake), chess logic, stress-test
-   timers, telemetry dashboard and chart.
+/* app.js — PeerJS connection (QR handshake), Stockfish engine worker, chess
+   logic, stress-test timers, telemetry dashboard and chart.
    Design rule: the UI must boot and the buttons must work even if every
    CDN library fails — failures surface as readable status messages. */
 
@@ -24,13 +24,14 @@ const MAX_MSG_BYTES = 4096;
 const MAX_MSGS_SEC  = 50;
 const MAX_POINTS    = 300;
 const SAMPLE_MS     = 500;
-const SF_CDN        = 'https://cdn.jsdelivr.net/npm/stockfish@18.0.0/src/';
+const ENGINE_LOAD_MS = 60000;               // give up on a build that never answers readyok
 
 const $ = (id) => document.getElementById(id);
 
 /* --------------------------------- State -------------------------------- */
 let role = null, peer = null, conn = null;
-let worker = null, engineReady = false, engineThreaded = false;
+let engine = null, engineReady = false, engineThreaded = false;
+let engineQueue = [], engineLoadTimer = 0, lastRenderAt = 0;
 let peerInfo = null;
 let mode = null, cfg = null;
 let chessLibs = null, chess = null, ground = null;
@@ -93,49 +94,97 @@ function loadChessLibs() {
 }
 
 /* ------------------------------ Engine setup ---------------------------- */
+// The Stockfish.js builds are self-contained worker scripts: they locate their
+// .wasm (and, multi-threaded, spawn their pthread helpers) from their own URL,
+// so they must be started directly with `new Worker(url)`. Loading them via
+// importScripts() inside another worker breaks that lookup.
 function engineSources() {
-  const local = (f) => new URL('stockfish/' + f, location.href).href;
   const s = [];
-  s.push({ label: 'local files', js: local('chal.js') });
+  if (crossOriginIsolated && typeof SharedArrayBuffer === 'function') {
+    s.push({ file: 'stockfish-18-lite.js', threaded: true });
+  }
+  s.push({ file: 'stockfish-18-lite-single.js', threaded: false });
   return s;
 }
 
-function startWorker() {
+function startEngine(sources, why = '') {
+  const src = sources[0];
+  if (!src) { setEngine('err', 'Engine failed to load' + (why ? ` (${why})` : '') + ' — reload the page.'); return; }
+  let w;
   try {
-    // ?v=2 busts the HTTP cache so the fixed worker script is always fetched.
-    worker = new Worker('./worker.js?v=2');
+    w = new Worker('./stockfish/' + src.file);
   } catch {
     setEngine('err', 'Engine worker blocked — serve the app over HTTPS, not file://');
     return;
   }
-  worker.onmessage = (e) => onWorkerMsg(e.data || {});
-  worker.onerror = () => setEngine('err', 'Engine worker crashed — reload the page.');
-  worker.postMessage({ type: 'load', sources: engineSources() });
+  engine = w;
+  const fail = (reason) => {
+    clearTimeout(engineLoadTimer);
+    w.terminate();
+    if (engine !== w) return;
+    engine = null;
+    const rest = sources.slice(1);
+    if (engineReady) {                         // crashed after it was working
+      engineReady = false;
+      engineThreaded = false;
+      if (!rest.length) { setEngine('err', `Engine crashed (${reason}) — reload the page.`); return; }
+      // Re-issue the search that died with it; uci() queues it for the replacement.
+      if (mode === 'match' && thinking) think();
+      else if (mode === 'stress' && stressTimer) thinkStress();
+    }
+    if (rest.length) setEngine('wait', 'Engine loading… (multi-threaded build failed, switching to single-threaded)');
+    startEngine(rest, reason);
+  };
+  w.onmessage = (e) => { if (engine === w) onEngineLine(e.data, src); };
+  w.onerror = (e) => { e.preventDefault(); fail(e.message || 'worker error'); };
+  engineLoadTimer = setTimeout(() => fail('no response'), ENGINE_LOAD_MS);
+  w.postMessage('uci');
 }
 
-const uci = (cmd) => worker && worker.postMessage({ type: 'uci', cmd });
+// Commands issued before the engine is ready (e.g. a 'start' arriving while
+// this device is still downloading the engine) are replayed once it is.
+function uci(cmd) {
+  if (engineReady) engine.postMessage(cmd);
+  else engineQueue.push(cmd);
+}
 
-function onWorkerMsg(m) {
-  switch (m.type) {
-    case 'loaded':
-      engineThreaded = !!m.threaded;
-      setEngine('ok', `Chal · single-threaded · ${m.source}`);
-      break;
-    case 'loadfail':
-      setEngine('wait', `Engine loading… (${m.source} variant unavailable, trying next)`);
-      break;
-    case 'uciok': uci('isready'); break;
-    case 'readyok': engineReady = true; break;
-    case 'telemetry':
-      if (m.nps   !== undefined) lastTel.nps   = m.nps;
-      if (m.nodes !== undefined) lastTel.nodes = m.nodes;
-      if (m.depth !== undefined) lastTel.depth = m.depth;
-      renderLocal();
-      break;
-    case 'bestmove': onBestmove(m.move); break;
-    case 'fatal':
-      setEngine('err', 'Engine failed to load — check the stockfish/ folder in your repo.');
-      break;
+function onEngineLine(line, src) {
+  if (typeof line !== 'string') return;
+
+  if (line.startsWith('info ')) {
+    const grab = (k) => {
+      const m = line.match(new RegExp('\\b' + k + ' (\\d+)\\b'));
+      return m ? parseInt(m[1], 10) : undefined;
+    };
+    const nps = grab('nps');
+    if (nps === undefined) return;               // ignore info lines without perf data
+    const nodes = grab('nodes'), depth = grab('depth');
+    lastTel.nps = nps;
+    if (nodes !== undefined) lastTel.nodes = nodes;
+    if (depth !== undefined) lastTel.depth = depth;
+    const now = Date.now();
+    if (now - lastRenderAt < 100) return;        // throttle: max ~10 repaints/s
+    lastRenderAt = now;
+    renderLocal();
+    return;
+  }
+
+  if (line.startsWith('bestmove')) {
+    const m = line.match(/^bestmove (\S+)/);
+    onBestmove(m ? m[1] : null);
+    return;
+  }
+
+  if (line === 'uciok') { engine.postMessage('isready'); return; }
+
+  if (line === 'readyok' && !engineReady) {
+    clearTimeout(engineLoadTimer);
+    engineReady = true;
+    engineThreaded = src.threaded;
+    setEngine('ok', `Stockfish 18 · ${src.threaded ? 'multi' : 'single'}-threaded`);
+    for (const cmd of engineQueue.splice(0)) engine.postMessage(cmd);
+    sendHello();                                 // tell the peer what we can run
+    updateThreadInfo();
   }
 }
 
@@ -206,7 +255,7 @@ function bindConn(c) {
   conn = c;
   conn.on('open', () => {
     setStatus('Connected — peer to peer.');
-    send({ t: 'hello', cores: myCores, isolated: crossOriginIsolated === true });
+    sendHello();
     loadChessLibs().catch(() => {});         // pre-warm in the background
     enterModeScreen();
   });
@@ -219,6 +268,9 @@ function bindConn(c) {
 }
 
 const send = (obj) => { if (conn && conn.open) conn.send(JSON.stringify(obj)); };
+const sendHello = () => send({
+  t: 'hello', cores: myCores, isolated: crossOriginIsolated === true, threaded: engineReady && engineThreaded,
+});
 
 /* ----------------------- Incoming message validation -------------------- */
 function validateMsg(raw) {
@@ -232,7 +284,8 @@ function validateMsg(raw) {
 
   switch (m.t) {
     case 'hello':
-      return isInt(m.cores, 1, 256) && typeof m.isolated === 'boolean' ? m : null;
+      return isInt(m.cores, 1, 256) && typeof m.isolated === 'boolean'
+        && (m.threaded === undefined || typeof m.threaded === 'boolean') ? m : null;
     case 'start':
       return (m.mode === 'match' || m.mode === 'stress')
         && isInt(m.threads, 1, 64) && isInt(m.depth, 1, 40)
@@ -254,7 +307,7 @@ function validateMsg(raw) {
 
 function handlePeerMsg(m) {
   switch (m.t) {
-    case 'hello':   peerInfo = { cores: m.cores, isolated: m.isolated }; updateThreadInfo(); break;
+    case 'hello':   peerInfo = { cores: m.cores, isolated: m.isolated, threaded: m.threaded === true }; updateThreadInfo(); break;
     case 'start':   if (role === 'join') beginMode(m); break;
     case 'move':    onPeerMove(m); break;
     case 'telemetry': onPeerTelemetry(m); break;
@@ -326,7 +379,7 @@ function enterModeScreen() {
 
 function matchedThreads() {
   if (!peerInfo) return 1;
-  if (!crossOriginIsolated || !peerInfo.isolated || !engineThreaded) return 1;
+  if (!engineThreaded || !peerInfo.threaded) return 1;
   return Math.max(1, Math.min(myCores, peerInfo.cores, 8));
 }
 
@@ -361,7 +414,6 @@ function beginMode(c) {
   screen('s-run');
   initChart();
   uci('setoption name Threads value ' + cfg.threads);
-  // uci('setoption name Hash value 16');
   uci('ucinewgame');
   if (mode === 'match') beginMatch(); else beginStress();
 }
@@ -404,8 +456,7 @@ function onBestmove(moveStr) {
     send({ t: 'move', uci: moveStr, ttd, nodes: lastTel.nodes || 0, nps: lastTel.nps || 0 });
     afterMove();
   }
-  // Mode B: bestmove arrives after 'stop' — nothing to do.
-  if (mode === 'stress') thinkStress();
+  // Mode B: bestmove only arrives after 'stop' — nothing to do.
 }
 
 function onPeerMove(m) {
@@ -448,8 +499,6 @@ function beginStress() {
   $('r-extra-label').textContent = 'depth';
   setStatus(`Stress test — go infinite for ${cfg.duration}s at ${cfg.threads} thread(s).`);
   const t0 = performance.now();
-
-  stressTimer = true;
   thinkStress();
   stressTimer = setInterval(() => {
     const el = Math.round(performance.now() - t0);
@@ -562,5 +611,5 @@ if (!window.isSecureContext) {
   setEngine('err', 'Blocked: not a secure context');
 } else {
   setStatus('Pick a role to connect two devices.');
-  startWorker();
+  startEngine(engineSources());
 }
