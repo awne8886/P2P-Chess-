@@ -8,11 +8,19 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
+  // Only our own files need the headers. Cross-origin requests (CDN libraries,
+  // PeerJS) are CORS requests that already satisfy COEP, so leave them to the
+  // browser: a CDN outage then shows up as a normal network error instead of a
+  // rejected FetchEvent ("Failed to fetch") thrown from this worker.
+  if (new URL(req.url).origin !== self.location.origin) return;
   // Chrome quirk: don't touch only-if-cached requests from other scopes.
   if (req.cache === 'only-if-cached' && req.mode !== 'same-origin') return;
 
   event.respondWith((async () => {
-    const res = await fetch(req);
+    let res;
+    try { res = await fetch(req); }
+    catch { return Response.error(); }             // offline: same result as no SW
+
     // Opaque responses can't be reconstructed — pass through untouched.
     if (res.status === 0 || res.type === 'opaque' || res.type === 'opaqueredirect') return res;
 
