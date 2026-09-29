@@ -107,9 +107,9 @@ function engineSources() {
   return s;
 }
 
-function startEngine(sources) {
+function startEngine(sources, why = '') {
   const src = sources[0];
-  if (!src) { setEngine('err', 'Engine failed to load — check the stockfish/ folder in your repo.'); return; }
+  if (!src) { setEngine('err', 'Engine failed to load' + (why ? ` (${why})` : '') + ' — reload the page.'); return; }
   let w;
   try {
     w = new Worker('./stockfish/' + src.file);
@@ -118,18 +118,26 @@ function startEngine(sources) {
     return;
   }
   engine = w;
-  const fail = () => {
+  const fail = (reason) => {
     clearTimeout(engineLoadTimer);
     w.terminate();
     if (engine !== w) return;
     engine = null;
-    if (engineReady) { engineReady = false; setEngine('err', 'Engine crashed — reload the page.'); return; }
-    if (sources.length > 1) setEngine('wait', 'Engine loading… (multi-threaded build unavailable, trying single-threaded)');
-    startEngine(sources.slice(1));
+    const rest = sources.slice(1);
+    if (engineReady) {                         // crashed after it was working
+      engineReady = false;
+      engineThreaded = false;
+      if (!rest.length) { setEngine('err', `Engine crashed (${reason}) — reload the page.`); return; }
+      // Re-issue the search that died with it; uci() queues it for the replacement.
+      if (mode === 'match' && thinking) think();
+      else if (mode === 'stress' && stressTimer) thinkStress();
+    }
+    if (rest.length) setEngine('wait', 'Engine loading… (multi-threaded build failed, switching to single-threaded)');
+    startEngine(rest, reason);
   };
   w.onmessage = (e) => { if (engine === w) onEngineLine(e.data, src); };
-  w.onerror = (e) => { e.preventDefault(); fail(); };
-  engineLoadTimer = setTimeout(fail, ENGINE_LOAD_MS);
+  w.onerror = (e) => { e.preventDefault(); fail(e.message || 'worker error'); };
+  engineLoadTimer = setTimeout(() => fail('no response'), ENGINE_LOAD_MS);
   w.postMessage('uci');
 }
 
